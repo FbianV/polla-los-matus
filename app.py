@@ -189,6 +189,47 @@ except gspread.exceptions.WorksheetNotFound:
 
 st.divider()
 
+hojas_sistema = ['Ranking', 'Resultados', 'Graficos']
+usuarios = [ws.title for ws in sheet.worksheets() if ws.title not in hojas_sistema]
+
+df_jugando = df_resultados_global[df_resultados_global['Estado'] == 'J']
+
+if not df_jugando.empty:
+    st.markdown("<h2 style='color: #ff4b4b;'>Predicts En Juego Ahora</h2>", unsafe_allow_html=True)
+    
+    with st.spinner("Cargando las predicciones de todos..."):
+        # Descargamos los datos de los usuarios solo si hay partidos en juego para no saturar la API
+        datos_usuarios = {}
+        for u in usuarios:
+            ws_u = sheet.worksheet(u)
+            df_u = pd.DataFrame(ws_u.get_all_records())
+            df_u['Partidos'] = df_u['Partidos'].astype(str).str.strip()
+            datos_usuarios[u] = df_u
+
+        for _, row in df_jugando.iterrows():
+            partido_actual = row['Partidos']
+            st.markdown(f"#### {partido_actual}")
+            
+            lista_predicciones = []
+            for u in usuarios:
+                df_u = datos_usuarios[u]
+                match_row = df_u[df_u['Partidos'] == partido_actual]
+                if not match_row.empty:
+                    p_local = match_row.iloc[0].get('Prediccion_Local', '')
+                    p_visita = match_row.iloc[0].get('Prediccion_Visita', '')
+                    
+                    if str(p_local).strip() != '' and str(p_visita).strip() != '':
+                        lista_predicciones.append({"Jugador": u, "Predicción": f"{int(p_local)} - {int(p_visita)}"})
+                    else:
+                        lista_predicciones.append({"Jugador": u, "Predicción": "No ingresó ❌"})
+            
+            if lista_predicciones:
+                df_en_vivo = pd.DataFrame(lista_predicciones)
+                st.dataframe(df_en_vivo, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+
 # --- FORMULARIO: INGRESAR PREDICCIONES ---
 st.header("Dale con tu predict")
 
