@@ -169,7 +169,14 @@ with st.sidebar:
                 
             except Exception as e:
                 st.error(f"Ocurrió un error: {e}")
-
+try:
+    resultados_sheet = sheet.worksheet("Resultados")
+    df_resultados_global = pd.DataFrame(resultados_sheet.get_all_records())
+    df_resultados_global['Estado'] = df_resultados_global.get('Estado', '').astype(str).str.strip().str.upper()
+    df_resultados_global['Partidos'] = df_resultados_global['Partidos'].astype(str).str.strip()
+except Exception as e:
+    st.error("Error leyendo la hoja de Resultados. Asegúrate de haber agregado la columna 'Estado'.")
+    st.stop()
 # --- VISTA: RANKING (Página Principal) ---
 st.header("La Clasific actual")
 try:
