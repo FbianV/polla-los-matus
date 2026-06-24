@@ -13,26 +13,41 @@ def poner_video_fondo(ruta_video):
         with open(ruta_video, "rb") as video_file:
             video_bytes = video_file.read()
         
-        # Codificamos el video para inyectarlo en el HTML
         encoded_video = base64.b64encode(video_bytes).decode()
 
         st.markdown(
             f"""
             <style>
-            /* Hacemos transparente el fondo por defecto de Streamlit */
+            /* Fondo transparente de la app base */
             .stApp {{
                 background-color: transparent;
             }}
-            /* Configuramos el video para que ocupe todo y se vaya al fondo */
+            
+            /* Truco para centrar video vertical en pantallas anchas sin que se vea deforme */
             #video-fondo {{
                 position: fixed;
-                right: 0;
-                bottom: 0;
-                min-width: 100%;
-                min-height: 100%;
+                top: 50%;
+                left: 50%;
+                min-width: 100vw;
+                min-height: 100vh;
+                width: auto;
+                height: auto;
                 z-index: -1;
+                transform: translate(-50%, -50%); /* Ancla el video al centro exacto */
                 object-fit: cover;
-                opacity: 0.4; /* Opacidad al 40% para que no tape el texto */
+                opacity: 0.4;
+            }}
+
+            /* Contenedor principal con efecto vidrio (Glassmorphism) */
+            .block-container {{
+                background: rgba(20, 20, 20, 0.7); /* Fondo oscuro semi-transparente */
+                backdrop-filter: blur(10px); /* Difumina el video detrás del cuadro */
+                border-radius: 20px; /* Bordes redondeados */
+                padding: 3rem 2rem; /* Espaciado interno */
+                margin-top: 2rem;
+                margin-bottom: 2rem;
+                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); /* Sombra elegante */
+                border: 1px solid rgba(255, 255, 255, 0.1);
             }}
             </style>
             <video id="video-fondo" autoplay loop muted playsinline>
@@ -42,11 +57,18 @@ def poner_video_fondo(ruta_video):
             unsafe_allow_html=True
         )
     except FileNotFoundError:
-        pass # Si no encuentra el video, simplemente carga el fondo normal
+        pass
 
 poner_video_fondo("EditDuro.mp4")
-st.title("Polla Mundialera")
 
+st.markdown(
+    "<h1 style='text-align: center; color: #FFD700; text-shadow: 2px 2px 8px rgba(0,0,0,0.8); font-size: 3.5rem; margin-bottom: 0;'>Polla Mundialera</h1>", 
+    unsafe_allow_html=True
+)
+st.markdown(
+    "<p style='text-align: center; font-size: 1.2rem; font-style: italic; color: #E0E0E0; margin-bottom: 2rem;'>Donde se separan los expertos de las mufas malayas</p>", 
+    unsafe_allow_html=True
+)
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
 try:
@@ -91,10 +113,10 @@ def calcular_puntos(row):
 
 # --- PANEL DE ADMINISTRACIÓN LATERAL ---
 with st.sidebar:
-    st.header("⚙️ Administración")
+    st.header("Resultados")
     st.write("Presiona este botón después de ingresar los resultados oficiales en Google Sheets.")
     
-    if st.button("🔄 Actualizar Resultados y Ranking", type="primary"):
+    if st.button("Actualizar Resultados y Ranking", type="primary"):
         with st.spinner("Descargando datos y calculando..."):
             try:
                 # 1. Obtener Resultados Oficiales
@@ -141,7 +163,7 @@ with st.sidebar:
                     ws_ranking.clear()
                     ws_ranking.update([df_ranking.columns.values.tolist()] + df_ranking.values.tolist())
 
-                st.success("✅ ¡Cálculos finalizados y base de datos actualizada!")
+                st.success("¡Cálculos finalizados y base de datos actualizada!")
                 time.sleep(2)
                 st.rerun() # Recarga la página web para mostrar los nuevos datos
                 
@@ -149,7 +171,7 @@ with st.sidebar:
                 st.error(f"Ocurrió un error: {e}")
 
 # --- VISTA: RANKING (Página Principal) ---
-st.header("📊 Clasificación Actual")
+st.header("La Clasific actual")
 try:
     ranking_sheet = sheet.worksheet("Ranking")
     df_ranking_vista = pd.DataFrame(ranking_sheet.get_all_records())
@@ -168,7 +190,7 @@ except gspread.exceptions.WorksheetNotFound:
 st.divider()
 
 # --- FORMULARIO: INGRESAR PREDICCIONES ---
-st.header("✍️ Ingresar Predicción")
+st.header("Dale con tu predict")
 
 hojas_sistema = ['Ranking', 'Resultados', 'Graficos']
 usuarios = [ws.title for ws in sheet.worksheets() if ws.title not in hojas_sistema]
@@ -202,7 +224,7 @@ if usuarios:
                 if celda_partido:
                     ws_usuario.update_cell(celda_partido.row, 2, pred_local)
                     ws_usuario.update_cell(celda_partido.row, 3, pred_visita)
-                    st.success(f"✅ ¡Predicción guardada! {usuario_sel}: {partido_sel} ({pred_local} - {pred_visita})")
+                    st.success(f"¡Predicción guardada! {usuario_sel}: {partido_sel} ({pred_local} - {pred_visita})")
                     st.balloons()
                 else:
                     st.error("No se encontró el partido en tu hoja personal.")
