@@ -5,7 +5,7 @@ from google.oauth2.service_account import Credentials
 
 # --- CONFIGURACIÓN VISUAL ---
 st.set_page_config(page_title="Polla Mundialera", page_icon="⚽", layout="centered")
-st.title("🏆 Polla Mundialera")
+st.title("Polla Mundialera")
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
 # En Streamlit Cloud, el JSON se pasa a través de st.secrets. 
@@ -23,7 +23,7 @@ except Exception as e:
     st.stop()
 
 # --- VISTA: RANKING ---
-st.header("📊 Clasificación Actual")
+st.header("Clasificación Actual")
 try:
     ranking_sheet = sheet.worksheet("Ranking")
     df_ranking = pd.DataFrame(ranking_sheet.get_all_records())
@@ -40,7 +40,7 @@ except gspread.exceptions.WorksheetNotFound:
 st.divider()
 
 # --- FORMULARIO: INGRESAR PREDICCIONES ---
-st.header("✍️ Ingresar Predicción")
+st.header("Ingresar Predicción")
 
 # Obtener nombres de las hojas que corresponden a usuarios
 hojas_sistema = ['Ranking', 'Resultados', 'RankingAlt', 'Graficos']
@@ -77,7 +77,7 @@ else:
                 # Actualiza la columna B (Prediccion_Local) y C (Prediccion_Visita)
                 ws_usuario.update_cell(celda_partido.row, 2, pred_local)
                 ws_usuario.update_cell(celda_partido.row, 3, pred_visita)
-                st.success(f"✅ ¡Predicción guardada! {usuario_sel}: {partido_sel} ({pred_local} - {pred_visita})")
+                st.success(f"Predicción guardada {usuario_sel}: {partido_sel} ({pred_local} - {pred_visita})")
                 st.balloons()
             else:
                 st.error("No se encontró el partido en tu hoja personal.")
