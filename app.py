@@ -76,16 +76,15 @@ try:
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
     client = gspread.authorize(creds)
     
-    # REEMPLAZA ESTO CON EL ID DE TU GOOGLE SHEET
+    # ID de tu Google Sheet
     SHEET_ID = '12BNsuzB8xqbvCvXhguZAPjBDthbxE0DXSC7gbRDrkaQ'
     sheet = client.open_by_key(SHEET_ID)
 except Exception as e:
     st.error("Error conectando a la base de datos. Avisa al administrador.")
     st.stop()
 
-# --- LÓGICA DE PUNTUACIÓN (Migrada de polla.py) ---
+# --- LÓGICA DE PUNTUACIÓN ---
 def calcular_puntos(row):
-    # Google Sheets suele devolver strings vacíos ('') para celdas sin datos
     val_local = str(row.get('Goles_Local', '')).strip()
     val_visita = str(row.get('Goles_Visita', '')).strip()
     
@@ -119,7 +118,6 @@ with st.sidebar:
     if st.button("Actualizar Resultados y Ranking", type="primary"):
         with st.spinner("Descargando datos y calculando..."):
             try:
-                # 1. Obtener Resultados Oficiales
                 ws_resultados = sheet.worksheet("Resultados")
                 df_resultados = pd.DataFrame(ws_resultados.get_all_records())
                 df_resultados['Partidos'] = df_resultados['Partidos'].astype(str).str.strip()
@@ -129,7 +127,6 @@ with st.sidebar:
                 
                 diccionario_ranking = {}
 
-                # 2. Procesar a cada usuario
                 for usuario in usuarios:
                     ws_user = sheet.worksheet(usuario)
                     df_usuario = pd.DataFrame(ws_user.get_all_records())
@@ -139,21 +136,16 @@ with st.sidebar:
 
                     df_usuario['Partidos'] = df_usuario['Partidos'].astype(str).str.strip()
 
-                    # Cruce temporal para traer los goles reales
                     df_temporal = pd.merge(df_usuario, df_resultados[['Partidos', 'Goles_Local', 'Goles_Visita']], on='Partidos', how='left')
                     
-                    # Calcular puntuación
                     df_usuario['Puntuacion'] = df_temporal.apply(calcular_puntos, axis=1)
                     diccionario_ranking[usuario] = df_usuario['Puntuacion'].sum()
 
-                    # Sobrescribir la hoja del usuario en Google Sheets con los nuevos puntos
                     ws_user.clear()
                     ws_user.update([df_usuario.columns.values.tolist()] + df_usuario.values.tolist())
                     
-                    # Pequeña pausa para no saturar la API de Google
                     time.sleep(1)
 
-                # 3. Actualizar la hoja de Ranking
                 if diccionario_ranking:
                     df_ranking = pd.DataFrame(list(diccionario_ranking.items()), columns=['Usuario', 'Puntuacion'])
                     df_ranking = df_ranking.sort_values(by='Puntuacion', ascending=False).reset_index(drop=True)
@@ -165,10 +157,12 @@ with st.sidebar:
 
                 st.success("¡Cálculos finalizados y base de datos actualizada!")
                 time.sleep(2)
-                st.rerun() # Recarga la página web para mostrar los nuevos datos
+                st.rerun() 
                 
             except Exception as e:
                 st.error(f"Ocurrió un error: {e}")
+
+# Leemos la hoja de resultados oficial globalmente para usarla en todo el sitio
 try:
     resultados_sheet = sheet.worksheet("Resultados")
     df_resultados_global = pd.DataFrame(resultados_sheet.get_all_records())
@@ -177,6 +171,7 @@ try:
 except Exception as e:
     st.error("Error leyendo la hoja de Resultados. Asegúrate de haber agregado la columna 'Estado'.")
     st.stop()
+
 # --- VISTA: RANKING (Página Principal) ---
 st.header("La Clasific actual")
 try:
@@ -196,6 +191,7 @@ except gspread.exceptions.WorksheetNotFound:
 
 st.divider()
 
+# --- SECCIÓN: PARTIDOS EN JUEGO ---
 hojas_sistema = ['Ranking', 'Resultados', 'Graficos']
 usuarios = [ws.title for ws in sheet.worksheets() if ws.title not in hojas_sistema]
 
@@ -205,7 +201,6 @@ if not df_jugando.empty:
     st.markdown("<h2 style='color: #ff4b4b;'>Predicts En Juego Ahora</h2>", unsafe_allow_html=True)
     
     with st.spinner("Cargando las predicciones de todos..."):
-        # Descargamos los datos de los usuarios solo si hay partidos en juego para no saturar la API
         datos_usuarios = {}
         for u in usuarios:
             ws_u = sheet.worksheet(u)
@@ -240,17 +235,11 @@ if not df_jugando.empty:
 # --- FORMULARIO: INGRESAR PREDICCIONES ---
 st.header("Dale con tu predict")
 
-hojas_sistema = ['Ranking', 'Resultados', 'Graficos']
-usuarios = [ws.title for ws in sheet.worksheets() if ws.title not in hojas_sistema]
-
 if usuarios:
     usuario_sel = st.selectbox("¿Quién eres?", usuarios)
-
-    resultados_sheet = sheet.worksheet("Resultados")
-    df_resultados_form = pd.DataFrame(resultados_sheet.get_all_records())
     
-    # Filtramos partidos donde no hay resultado oficial todavía
-    df_pendientes = df_resultados_form[df_resultados_form['Goles_Local'].astype(str).str.strip() == '']
+    # Aquí se aplica la corrección: Usar la 'P' de Pendiente
+    df_pendientes = df_resultados_global[df_resultados_global['Estado'] == 'P']
     partidos = df_pendientes['Partidos'].tolist()
 
     if not partidos:
@@ -279,8 +268,11 @@ if usuarios:
 
 # --- VISTA: RESULTADOS REALES ---
 with st.expander("Ver resultados oficiales de los partidos jugados"):
-    df_jugados = df_resultados_form[df_resultados_form['Goles_Local'].astype(str).str.strip() != '']
+    # Aquí se aplica la corrección: Usar la 'F' de Finalizado
+    df_jugados = df_resultados_global[df_resultados_global['Estado'] == 'F']
     if not df_jugados.empty:
-        st.dataframe(df_jugados, use_container_width=True, hide_index=True)
+        # Filtramos para mostrar solo las columnas relevantes (sin mostrar la 'F' en la web)
+        columnas_mostrar = ['Partidos', 'Goles_Local', 'Goles_Visita']
+        st.dataframe(df_jugados[columnas_mostrar], use_container_width=True, hide_index=True)
     else:
         st.write("Aún no se han jugado partidos.")
