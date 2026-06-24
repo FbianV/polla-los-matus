@@ -228,13 +228,21 @@ if not df_resultados_global.empty and 'Estado' in df_resultados_global.columns:
         st.markdown("<h2 style='color: #ff4b4b;'>Predicts En Juego Ahora</h2>", unsafe_allow_html=True)
         
         with st.spinner("Cargando las predicciones de todos..."):
-            datos_usuarios = {}
-            for u in usuarios:
-                ws_u = sheet.worksheet(u)
-                df_u = cargar_datos_seguros(ws_u)
-                if not df_u.empty and 'Partidos' in df_u.columns:
-                    df_u['Partidos'] = df_u['Partidos'].astype(str).str.strip()
-                datos_usuarios[u] = df_u
+            # NUEVO ENFOQUE: Usar Caché para evitar llamadas repetitivas
+            @st.cache_data(ttl=60) # Guarda los datos en memoria por 60 segundos
+            def obtener_datos_usuarios(_sheet, _usuarios):
+                datos = {}
+                for u in _usuarios:
+                    ws_u = _sheet.worksheet(u)
+                    df_u = cargar_datos_seguros(ws_u)
+                    if not df_u.empty and 'Partidos' in df_u.columns:
+                        df_u['Partidos'] = df_u['Partidos'].astype(str).str.strip()
+                    datos[u] = df_u
+                    time.sleep(0.5) # Pausa crucial para respetar los límites de la API
+                return datos
+
+            # Llamamos a la función cacheada
+            datos_usuarios = obtener_datos_usuarios(sheet, usuarios)
 
             for _, row in df_jugando.iterrows():
                 partido_actual = row['Partidos']
@@ -260,7 +268,8 @@ if not df_resultados_global.empty and 'Estado' in df_resultados_global.columns:
                 
                 if lista_predicciones:
                     df_en_vivo = pd.DataFrame(lista_predicciones)
-                    st.dataframe(df_en_vivo, use_container_width=True, hide_index=True)
+                    # Aprovechamos de actualizar a la nueva sintaxis que pide Streamlit
+                    st.dataframe(df_en_vivo, width='stretch', hide_index=True)
 
         st.divider()
 
