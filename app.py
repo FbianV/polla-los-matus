@@ -102,10 +102,6 @@ def cargar_datos_seguros(worksheet):
         
         # Eliminamos cualquier columna fantasma que no tenga nombre
         df = df.loc[:, df.columns != '']
-        
-        # Forzamos los textos a números donde corresponda para no romper las sumas
-        for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='ignore')
             
         return df
 
@@ -235,7 +231,7 @@ if not df_resultados_global.empty and 'Estado' in df_resultados_global.columns:
             datos_usuarios = {}
             for u in usuarios:
                 ws_u = sheet.worksheet(u)
-                df_u = cargar_datos_seguros(ws_u) # <-- AQUÍ SE APLICÓ LA CORRECCIÓN
+                df_u = cargar_datos_seguros(ws_u)
                 if not df_u.empty and 'Partidos' in df_u.columns:
                     df_u['Partidos'] = df_u['Partidos'].astype(str).str.strip()
                 datos_usuarios[u] = df_u
