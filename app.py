@@ -3,10 +3,50 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import time
+import base64
 
 # --- CONFIGURACIÓN VISUAL ---
 st.set_page_config(page_title="Polla Mundialera", page_icon="⚽", layout="centered")
-st.title("🏆 Polla Mundialera")
+
+def poner_video_fondo(ruta_video):
+    try:
+        with open(ruta_video, "rb") as video_file:
+            video_bytes = video_file.read()
+        
+        # Codificamos el video para inyectarlo en el HTML
+        encoded_video = base64.b64encode(video_bytes).decode()
+
+        st.markdown(
+            f"""
+            <style>
+            /* Hacemos transparente el fondo por defecto de Streamlit */
+            .stApp {{
+                background-color: transparent;
+            }}
+            /* Configuramos el video para que ocupe todo y se vaya al fondo */
+            #video-fondo {{
+                position: fixed;
+                right: 0;
+                bottom: 0;
+                min-width: 100%;
+                min-height: 100%;
+                z-index: -1;
+                object-fit: cover;
+                opacity: 0.4; /* Opacidad al 40% para que no tape el texto */
+            }}
+            </style>
+            <video id="video-fondo" autoplay loop muted playsinline>
+                <source src="data:video/mp4;base64,{encoded_video}" type="video/mp4">
+            </video>
+            """,
+            unsafe_allow_html=True
+        )
+    except FileNotFoundError:
+        pass # Si no encuentra el video, simplemente carga el fondo normal
+
+poner_video_fondo("EditDuro.mp4")
+st.title("Polla Mundialera")
+
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
 try:
