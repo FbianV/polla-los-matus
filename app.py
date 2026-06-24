@@ -16,7 +16,7 @@ try:
     client = gspread.authorize(creds)
     
     # REEMPLAZA ESTO CON EL ID DE TU GOOGLE SHEET
-    SHEET_ID = 'TU_ID_LARGO_AQUI'
+    SHEET_ID = '12BNsuzB8xqbvCvXhguZAPjBDthbxE0DXSC7gbRDrkaQ'
     sheet = client.open_by_key(SHEET_ID)
 except Exception as e:
     st.error("Error conectando a la base de datos. Avisa al administrador.")
