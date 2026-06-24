@@ -83,6 +83,32 @@ except Exception as e:
     st.error("Error conectando a la base de datos. Avisa al administrador.")
     st.stop()
 
+# --- FUNCIÓN ANTIFALLOS PARA LEER HOJAS ---
+def cargar_datos_seguros(worksheet):
+    """
+    Intenta leer la hoja normalmente. Si Google Sheets tiene celdas sucias 
+    o encabezados vacíos que hacen explotar a gspread, usa el Plan B.
+    """
+    try:
+        return pd.DataFrame(worksheet.get_all_records())
+    except Exception:
+        raw_data = worksheet.get_all_values()
+        if not raw_data or len(raw_data) < 2:
+            return pd.DataFrame() # Hoja vacía
+        
+        # Limpiamos los encabezados
+        headers = [str(h).strip() for h in raw_data[0]]
+        df = pd.DataFrame(raw_data[1:], columns=headers)
+        
+        # Eliminamos cualquier columna fantasma que no tenga nombre
+        df = df.loc[:, df.columns != '']
+        
+        # Forzamos los textos a números donde corresponda para no romper las sumas
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='ignore')
+            
+        return df
+
 # --- LÓGICA DE PUNTUACIÓN ---
 def calcular_puntos(row):
     val_local = str(row.get('Goles_Local', '')).strip()
@@ -119,8 +145,10 @@ with st.sidebar:
         with st.spinner("Descargando datos y calculando..."):
             try:
                 ws_resultados = sheet.worksheet("Resultados")
-                df_resultados = pd.DataFrame(ws_resultados.get_all_records())
-                df_resultados['Partidos'] = df_resultados['Partidos'].astype(str).str.strip()
+                df_resultados = cargar_datos_seguros(ws_resultados)
+                
+                if not df_resultados.empty and 'Partidos' in df_resultados.columns:
+                    df_resultados['Partidos'] = df_resultados['Partidos'].astype(str).str.strip()
 
                 hojas_sistema = ['Ranking', 'Resultados', 'Graficos']
                 usuarios = [ws.title for ws in sheet.worksheets() if ws.title not in hojas_sistema]
@@ -129,9 +157,9 @@ with st.sidebar:
 
                 for usuario in usuarios:
                     ws_user = sheet.worksheet(usuario)
-                    df_usuario = pd.DataFrame(ws_user.get_all_records())
+                    df_usuario = cargar_datos_seguros(ws_user)
 
-                    if 'Partidos' not in df_usuario.columns:
+                    if df_usuario.empty or 'Partidos' not in df_usuario.columns:
                         continue
 
                     df_usuario['Partidos'] = df_usuario['Partidos'].astype(str).str.strip()
@@ -165,9 +193,11 @@ with st.sidebar:
 # Leemos la hoja de resultados oficial globalmente para usarla en todo el sitio
 try:
     resultados_sheet = sheet.worksheet("Resultados")
-    df_resultados_global = pd.DataFrame(resultados_sheet.get_all_records())
-    df_resultados_global['Estado'] = df_resultados_global.get('Estado', '').astype(str).str.strip().str.upper()
-    df_resultados_global['Partidos'] = df_resultados_global['Partidos'].astype(str).str.strip()
+    df_resultados_global = cargar_datos_seguros(resultados_sheet)
+    
+    if not df_resultados_global.empty:
+        df_resultados_global['Estado'] = df_resultados_global.get('Estado', '').astype(str).str.strip().str.upper()
+        df_resultados_global['Partidos'] = df_resultados_global['Partidos'].astype(str).str.strip()
 except Exception as e:
     st.error("Error leyendo la hoja de Resultados. Asegúrate de haber agregado la columna 'Estado'.")
     st.stop()
@@ -176,7 +206,7 @@ except Exception as e:
 st.header("La Clasific actual")
 try:
     ranking_sheet = sheet.worksheet("Ranking")
-    df_ranking_vista = pd.DataFrame(ranking_sheet.get_all_records())
+    df_ranking_vista = cargar_datos_seguros(ranking_sheet)
     
     if not df_ranking_vista.empty:
         st.dataframe(
@@ -195,42 +225,48 @@ st.divider()
 hojas_sistema = ['Ranking', 'Resultados', 'Graficos']
 usuarios = [ws.title for ws in sheet.worksheets() if ws.title not in hojas_sistema]
 
-df_jugando = df_resultados_global[df_resultados_global['Estado'] == 'J']
+if not df_resultados_global.empty and 'Estado' in df_resultados_global.columns:
+    df_jugando = df_resultados_global[df_resultados_global['Estado'] == 'J']
 
-if not df_jugando.empty:
-    st.markdown("<h2 style='color: #ff4b4b;'>Predicts En Juego Ahora</h2>", unsafe_allow_html=True)
-    
-    with st.spinner("Cargando las predicciones de todos..."):
-        datos_usuarios = {}
-        for u in usuarios:
-            ws_u = sheet.worksheet(u)
-            df_u = pd.DataFrame(ws_u.get_all_records())
-            df_u['Partidos'] = df_u['Partidos'].astype(str).str.strip()
-            datos_usuarios[u] = df_u
-
-        for _, row in df_jugando.iterrows():
-            partido_actual = row['Partidos']
-            st.markdown(f"#### {partido_actual}")
-            
-            lista_predicciones = []
+    if not df_jugando.empty:
+        st.markdown("<h2 style='color: #ff4b4b;'>Predicts En Juego Ahora</h2>", unsafe_allow_html=True)
+        
+        with st.spinner("Cargando las predicciones de todos..."):
+            datos_usuarios = {}
             for u in usuarios:
-                df_u = datos_usuarios[u]
-                match_row = df_u[df_u['Partidos'] == partido_actual]
-                if not match_row.empty:
-                    p_local = match_row.iloc[0].get('Prediccion_Local', '')
-                    p_visita = match_row.iloc[0].get('Prediccion_Visita', '')
+                ws_u = sheet.worksheet(u)
+                df_u = cargar_datos_seguros(ws_u) # <-- AQUÍ SE APLICÓ LA CORRECCIÓN
+                if not df_u.empty and 'Partidos' in df_u.columns:
+                    df_u['Partidos'] = df_u['Partidos'].astype(str).str.strip()
+                datos_usuarios[u] = df_u
+
+            for _, row in df_jugando.iterrows():
+                partido_actual = row['Partidos']
+                st.markdown(f"#### {partido_actual}")
+                
+                lista_predicciones = []
+                for u in usuarios:
+                    df_u = datos_usuarios[u]
                     
-                    if str(p_local).strip() != '' and str(p_visita).strip() != '':
-                        lista_predicciones.append({"Jugador": u, "Predicción": f"{int(p_local)} - {int(p_visita)}"})
-                    else:
-                        lista_predicciones.append({"Jugador": u, "Predicción": "No ingresó ❌"})
-            
-            if lista_predicciones:
-                df_en_vivo = pd.DataFrame(lista_predicciones)
-                st.dataframe(df_en_vivo, use_container_width=True, hide_index=True)
+                    if df_u.empty or 'Partidos' not in df_u.columns:
+                        lista_predicciones.append({"Jugador": u, "Predicción": "Hoja vacía ❌"})
+                        continue
+                        
+                    match_row = df_u[df_u['Partidos'] == partido_actual]
+                    if not match_row.empty:
+                        p_local = match_row.iloc[0].get('Prediccion_Local', '')
+                        p_visita = match_row.iloc[0].get('Prediccion_Visita', '')
+                        
+                        if str(p_local).strip() != '' and str(p_visita).strip() != '' and str(p_local).strip() != 'nan':
+                            lista_predicciones.append({"Jugador": u, "Predicción": f"{int(p_local)} - {int(p_visita)}"})
+                        else:
+                            lista_predicciones.append({"Jugador": u, "Predicción": "No ingresó ❌"})
+                
+                if lista_predicciones:
+                    df_en_vivo = pd.DataFrame(lista_predicciones)
+                    st.dataframe(df_en_vivo, use_container_width=True, hide_index=True)
 
-    st.divider()
-
+        st.divider()
 
 # --- FORMULARIO: INGRESAR PREDICCIONES ---
 st.header("Dale con tu predict")
@@ -238,41 +274,44 @@ st.header("Dale con tu predict")
 if usuarios:
     usuario_sel = st.selectbox("¿Quién eres?", usuarios)
     
-    # Aquí se aplica la corrección: Usar la 'P' de Pendiente
-    df_pendientes = df_resultados_global[df_resultados_global['Estado'] == 'P']
-    partidos = df_pendientes['Partidos'].tolist()
+    if not df_resultados_global.empty and 'Estado' in df_resultados_global.columns:
+        df_pendientes = df_resultados_global[df_resultados_global['Estado'] == 'P']
+        partidos = df_pendientes['Partidos'].tolist()
 
-    if not partidos:
-        st.info("No hay partidos pendientes para predecir.")
-    else:
-        partido_sel = st.selectbox("Selecciona el partido", partidos)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            pred_local = st.number_input("Goles Local", min_value=0, step=1)
-        with col2:
-            pred_visita = st.number_input("Goles Visita", min_value=0, step=1)
+        if not partidos:
+            st.info("No hay partidos pendientes para predecir.")
+        else:
+            partido_sel = st.selectbox("Selecciona el partido", partidos)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                pred_local = st.number_input("Goles Local", min_value=0, step=1)
+            with col2:
+                pred_visita = st.number_input("Goles Visita", min_value=0, step=1)
 
-        if st.button("Guardar Predicción", type="primary"):
-            with st.spinner('Guardando en la base de datos...'):
-                ws_usuario = sheet.worksheet(usuario_sel)
-                celda_partido = ws_usuario.find(partido_sel)
-                
-                if celda_partido:
-                    ws_usuario.update_cell(celda_partido.row, 2, pred_local)
-                    ws_usuario.update_cell(celda_partido.row, 3, pred_visita)
-                    st.success(f"¡Predicción guardada! {usuario_sel}: {partido_sel} ({pred_local} - {pred_visita})")
-                    st.balloons()
-                else:
-                    st.error("No se encontró el partido en tu hoja personal.")
+            if st.button("Guardar Predicción", type="primary"):
+                with st.spinner('Guardando en la base de datos...'):
+                    ws_usuario = sheet.worksheet(usuario_sel)
+                    celda_partido = ws_usuario.find(partido_sel)
+                    
+                    if celda_partido:
+                        ws_usuario.update_cell(celda_partido.row, 2, pred_local)
+                        ws_usuario.update_cell(celda_partido.row, 3, pred_visita)
+                        st.success(f"¡Predicción guardada! {usuario_sel}: {partido_sel} ({pred_local} - {pred_visita})")
+                        st.balloons()
+                    else:
+                        st.error("No se encontró el partido en tu hoja personal.")
 
 # --- VISTA: RESULTADOS REALES ---
 with st.expander("Ver resultados oficiales de los partidos jugados"):
-    # Aquí se aplica la corrección: Usar la 'F' de Finalizado
-    df_jugados = df_resultados_global[df_resultados_global['Estado'] == 'F']
-    if not df_jugados.empty:
-        # Filtramos para mostrar solo las columnas relevantes (sin mostrar la 'F' en la web)
-        columnas_mostrar = ['Partidos', 'Goles_Local', 'Goles_Visita']
-        st.dataframe(df_jugados[columnas_mostrar], use_container_width=True, hide_index=True)
+    if not df_resultados_global.empty and 'Estado' in df_resultados_global.columns:
+        df_jugados = df_resultados_global[df_resultados_global['Estado'] == 'F']
+        if not df_jugados.empty:
+            columnas_mostrar = ['Partidos', 'Goles_Local', 'Goles_Visita']
+            # Filtramos solo las columnas que existan para no tener otro error
+            columnas_finales = [col for col in columnas_mostrar if col in df_jugados.columns]
+            st.dataframe(df_jugados[columnas_finales], use_container_width=True, hide_index=True)
+        else:
+            st.write("Aún no se han jugado partidos.")
     else:
-        st.write("Aún no se han jugado partidos.")
+        st.write("La hoja de resultados está vacía o sin formato.")
